@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from corallab.schemas.eval.persona_record import PersonaRecord
+from corallab.schemas.eval.run_manifest import ModelCallConfig, RunManifest
+from corallab.schemas.eval.test_case_record import TestCaseRecord
 
 
 class _Model(BaseModel):
@@ -219,3 +224,111 @@ class PreflightReport(_Model):
         default_factory=dict, description="Sum of calls per model id (upper bounds included)"
     )
     ollama: list[OllamaContext] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Writers
+# ---------------------------------------------------------------------------
+
+
+class WriteAction(StrEnum):
+    CREATED = "created"
+    OVERWRITTEN = "overwritten"
+    APPENDED = "appended"
+    UPDATED = "updated"
+
+
+class WriteResult(_Model):
+    """What a writer did. Nothing is written when ``problems`` is not empty."""
+
+    written: bool
+    path: str = Field(description="The file written, or that would have been written")
+    action: WriteAction | None = Field(default=None, description="None when nothing was written")
+    diff: str = Field(default="", description="Unified diff of the file, before → after")
+    problems: list[str] = Field(
+        default_factory=list, description="Why nothing was written; empty when it was"
+    )
+    notes: list[str] = Field(
+        default_factory=list, description="Worth a look, but did not stop the write"
+    )
+
+
+ModelChoice = str | ModelCallConfig
+
+
+class ManifestOverrides(_Model):
+    """Changes ``create_manifest`` makes to its template. Unset fields keep the template's value.
+
+    A model given as a bare id becomes ``{model_id: <id>}``: the template's sampling params for
+    that role are dropped and the role's default temperature applies. Give a ``ModelCallConfig``
+    to set params.
+    """
+
+    run_id: str | None = None
+    evaluation_level: int | None = Field(default=None, ge=1, le=3)
+    system_under_test: list[ModelChoice] | None = Field(
+        default=None, min_length=1, description="Replaces the whole list"
+    )
+    person_response_model: ModelChoice | None = Field(
+        default=None, description="simulation.person_response_model"
+    )
+    fidelity_model: ModelChoice | None = Field(
+        default=None, description="simulation.elicitation_fidelity.model"
+    )
+    judge_model: ModelChoice | None = Field(default=None, description="Every judge's model")
+    max_turns: int | None = Field(default=None, ge=1, description="simulation.max_turns")
+    batch_size: int | None = Field(default=None, ge=1, description="simulation.batch_size")
+    test_case_records_path: str | None = None
+    persona_records_path: str | None = None
+    run_dir: str | None = None
+    set: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Any other field, by dotted path with list indexes, applied last: "
+            "{'judges.0.options.max_concurrency': 1}. A value of null removes the key"
+        ),
+    )
+
+
+class ManifestWriteResult(WriteResult):
+    template_path: str | None = None
+    template_diff: str = Field(default="", description="Unified diff, template → new manifest")
+    manifest: RunManifest | None = Field(default=None, description="The manifest as validated")
+    preflight: PreflightReport | None = Field(
+        default=None, description="Preflight on the written file; None when nothing was written"
+    )
+
+
+class ModelAddResult(WriteResult):
+    model: ModelSummary | None = None
+    env: ModelEnvStatus | None = Field(
+        default=None, description="The env vars the model's endpoint needs, and whether each is set"
+    )
+
+
+class BehaviorInfo(_Model):
+    """A user behavior a test case must assert, as the catalog defines it."""
+
+    id: str
+    label: str
+    definition: str | None = None
+    source: str = Field(description="'pathway' or 'setup_behaviors'")
+
+
+class TestCaseWriteResult(WriteResult):
+    __test__ = False
+
+    test_case: TestCaseRecord | None = None
+    expected_behaviors: list[BehaviorInfo] = Field(
+        default_factory=list,
+        description="One assertion is needed for each; returned even when nothing was written",
+    )
+
+
+class PersonaWriteResult(WriteResult):
+    persona: PersonaRecord | None = None
+    changed_paths: list[str] = Field(
+        default_factory=list,
+        description="For a variant: rendering paths that differ from the base persona",
+    )
+    base_diff: str = Field(default="", description="For a variant: unified diff, base → this")

@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from coralmap import KnowledgeLibrary
 from coralmap.models import Pathway, observations
@@ -145,6 +145,14 @@ def load_test_case_records(
         raise TestCaseRecordsError(records_file, [d.message for d in details], details)
     logger.info("Loaded %d test case(s) from %s", len(cases), records_file)
     return cases
+
+
+def dimension_about(library: KnowledgeLibrary, value_id: str) -> str:
+    """What the dimension of context value ``value_id`` is about: person, occasion, exchange or
+    setting (TEST_CASE_RULES section 2). Raises ``KeyError`` when either entry is missing."""
+    value: Any = library.entry(value_id)
+    dimension: Any = library.entry(value.body.dimension)
+    return str(getattr(dimension.body.about, "value", dimension.body.about))
 
 
 def expected_behaviors(library: KnowledgeLibrary, record: TestCaseRecord) -> set[str]:

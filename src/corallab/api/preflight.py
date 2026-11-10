@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from corallab import paths
 from corallab.api import _prompts
+from corallab.api._catalog import load_catalog
 from corallab.api._manifests import (
     ROLE_FIDELITY,
     ROLE_PERSON,
@@ -173,17 +174,10 @@ def _check_env(manifest: RunManifest, issues: _Issues, *, dotenv: bool) -> EnvRe
 
 
 def _load_catalog(issues: _Issues) -> Any:
-    from corallab.kl import load_library
-
-    kl_path = paths.knowledge_library_path()
-    if kl_path is not None and not kl_path.exists():
-        issues.error("catalog", f"CORALMIND_KL_PATH names {kl_path}, which does not exist")
-        return None
-    try:
-        return load_library()
-    except Exception as exc:  # LibraryParseError and anything coralmap raises on a bad tree
-        issues.error("catalog", f"the Knowledge Library did not load: {exc}")
-        return None
+    library, problem = load_catalog()
+    if problem is not None:
+        issues.error("catalog", problem)
+    return library
 
 
 def _catalog_info(library: Any, summaries: list[TestCaseSummary]) -> CatalogInfo:

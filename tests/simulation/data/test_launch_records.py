@@ -21,6 +21,7 @@ from corallab.judging.kl_index import LibraryIndex
 from corallab.schemas.core.kl import KlPin
 from corallab.schemas.eval.persona_record import PersonaRecord
 from corallab.schemas.eval.test_case_record import TestCaseRecord
+from corallab.simulation.data.test_case_records import dimension_about as _about
 
 _REAL_KL = paths.default_repo_root().parent / "knowledge-library"
 _PERSONAS = paths.data_dir() / "persona_records"
@@ -48,12 +49,6 @@ def personas() -> dict[str, PersonaRecord]:
 def cases() -> list[TestCaseRecord]:
     lines = _SUITE.read_text(encoding="utf-8").splitlines()
     return [TestCaseRecord.model_validate_json(line) for line in lines if line.strip()]
-
-
-def _about(library: KnowledgeLibrary, value_id: str) -> str:
-    value = library.entry(value_id)
-    dimension = library.entry(value.body.dimension)
-    return str(getattr(dimension.body.about, "value", dimension.body.about))
 
 
 def test_the_records_are_present(

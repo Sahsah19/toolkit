@@ -16,6 +16,17 @@ It reuses the toolkit's own loaders, validators and schemas (`RunManifest`, `loa
 | `load_manifest(manifest)` | `RunManifest` from a path, a manifest id or a `RunManifest` |
 | `preflight(manifest_path, *, query_ollama=True, ollama_timeout=2.0, transcript=None, dotenv=True)` | `PreflightReport`: errors, warnings, catalog pin, env, model-call estimates, Ollama context |
 
+### Writers
+
+| Function | Writes |
+| --- | --- |
+| `create_manifest(from_template, overrides, out_name, *, overwrite=False, query_ollama=True, dotenv=True)` | `run_manifests/<out_name>.yaml` from a manifest plus `ManifestOverrides`, then runs `preflight` on it |
+| `add_model(model_id, endpoint, litellm_model, *, base_model=None, registry=None, dotenv=True)` | One entry at the end of `models:` in `endpoints.yaml`; every other line kept. Reports the env vars to set |
+| `draft_test_case(records_file, *, pathway_id, persona_ref, scenario, opening, scenario_strategies, assertions, ...)` | One line appended to a test case JSONL file, pinned to the loaded library, with one assertion per expected behavior |
+| `create_persona(persona_id, rendering, elevated, *, version=1, provenance=None, variant_of=None, changed_paths=None, overwrite=False)` | `persona_records/<persona_id>.json`; for a variant, works out `changed_paths` |
+
+Each returns a `WriteResult`: `written`, `path`, `action`, `diff` (the file before → after), `problems` (why nothing was written) and `notes`. A writer never raises for a problem in its inputs and writes nothing when there is one. Manifests and personas are not replaced unless `overwrite=True`. Output follows the committed files' layout: the committed manifests, test cases and personas rebuild byte for byte (`tests/api/test_recreate_upstream.py`).
+
 A file or line that does not validate is listed with `error` set, not dropped. `preflight` reports problems instead of raising them.
 
 ## Rules this layer keeps
