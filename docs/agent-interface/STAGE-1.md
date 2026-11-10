@@ -1,6 +1,8 @@
 # Stage 1: the typed API layer, listings, env check and preflight
 
-Branch `agent-interface` (from `student-homework`). Code commit `2c7d1de`.
+Branch `agent-interface`, based on upstream `main` (`414b44e`, release 0.1.0). Code commit `164a9ad`.
+
+The branch is independent of the student homework-help work: it carries none of those records, manifests or `PROPOSAL.md`, and everything below was checked against the upstream cases. It was first branched from `student-homework` and then rebased onto `main` to separate the two.
 
 ## What was built
 
@@ -39,7 +41,7 @@ preflight(manifest_path: str | Path, *, query_ollama: bool = True,
           dotenv: bool = True, fetch: Fetch = http_json) -> PreflightReport
 ```
 
-`manifest_path` and `manifest` accept a path, a path under the data repository, or a bare id (`l3_student_homework_smoke`).
+`manifest_path` and `manifest` accept a path, a path under the data repository, or a bare id (`l3_local`).
 
 `PreflightReport`: `ok` (no errors), `errors` and `warnings` (`Issue`: `severity`, `check`, `message`, `subject`), `catalog` (`CatalogInfo`: `kl_path`, loaded `version`/`digest`, the test cases' pins, `matches`), `env` (`EnvReport`), `calls` (`RoleCalls` per role and model: `calls`, `upper_bound`, `basis`), `calls_by_model`, `ollama` (`OllamaContext` per local model, with a `PromptEstimate` per role).
 
@@ -61,12 +63,13 @@ Call estimates, before retries, multiplied by the number of `system_under_test` 
 | judge_stage1 | cases × definition groups at `group_size` (the judge's own `build_definition_groups`) | exact when every transcript has turns |
 | judge_stage2 | cases × ceil(pathways / `pathways_per_call`), every pathway a candidate | upper bound |
 
-## Results on the named manifests (run 2026-11-10)
+## Results on upstream manifests (run 2026-11-10, `CORALMIND_KL_PATH` unset)
 
-- `l3_launch_entrenchment_smoke`: one error, `AZURE_API_KEY is not set; needed by azure/gpt-5.4-mini (system_under_test, person_response, elicitation_fidelity, judge)`. 173 calls at most, all on that model (Stage 1: 36 groups; Stage 2: up to 117).
-- `l3_student_homework_smoke`, without `CORALMIND_KL_PATH`: one `catalog_pin` error (pins `sha256:ab31949defeba3f4`, the bundled library is `sha256:4564ba13128cc240`), with a note that the variable is unset. Neither the shell nor `.env` set it.
-- `l3_student_homework_smoke`, with `CORALMIND_KL_PATH=~/knowledge-library`: `ok`. Stage 1 is 37 groups, matching PROPOSAL.md's "37 screening groups". At most 165 Gemini calls and 5 `local/llama3.2` calls. One warning: the student's prompt is about 2,980 tokens against an assumed 2,048 context, so the start of it (the persona block) would be cut. That may explain the off-script student in the proposal's smoke run; not verified.
-- `l3_launch_entrenchment_smoke_local` (the untracked file, read only): five warnings. Judge Stage 1 prompts reach about 16,070 tokens against 2,048, consistent with the cut at about 2,050 seen in practice.
+Upstream test cases pin the catalog bundled with `coralmap` (`0.1.0 sha256:4564ba13128cc240`), so every pin matched without `CORALMIND_KL_PATH`.
+
+- `l3_launch_entrenchment_smoke`: one error, `AZURE_API_KEY is not set; needed by azure/gpt-5.4-mini (system_under_test, person_response, elicitation_fidelity, judge)`. At most 173 calls, all on that model (Stage 1: 36 groups; Stage 2: up to 117).
+- `l3_local`: `ok`, at most 161 calls on `local/llama3.2`. Four Ollama warnings against an assumed 2,048 context: person prompt about 2,540 tokens, fidelity about 4,010, judge Stage 1 about 13,460, Stage 2 about 6,050. The Stage 1 figure is consistent with judge prompts cut at about 2,050 tokens in practice.
+- `l1_local`: `ok`, at most 154 calls. Judge Stage 1 about 12,160 tokens, Stage 2 about 4,750; both over 2,048.
 
 ## Decisions
 
@@ -87,12 +90,12 @@ Call estimates, before retries, multiplied by the number of `system_under_test` 
 
 ## `pixi run check`
 
-In `~/toolkit` it reports 8 failures, all present before this stage and none in code this stage touched:
+In `~/toolkit` it reports 8 failures. None comes from this branch's code; they depend on the machine:
 
-- 7 are the catalog-pin coupling PROPOSAL.md describes: `~/knowledge-library` is on `student-homework`, so the upstream records' pins do not match it.
-- 1 is `test_committed_run_config_validates[l3_launch_entrenchment_smoke_local.yaml]`: the untracked local manifest has no schema comment line. It is to be left alone.
+- 7 tests load the sibling `~/knowledge-library` checkout, which is on its `student-homework` branch (digest `sha256:ab31949defeba3f4`), so upstream records' pins do not match it. With that checkout on `main`, or absent, they pass or skip.
+- 1 is `test_committed_run_config_validates[l3_launch_entrenchment_smoke_local.yaml]`: an untracked local manifest with no schema comment line. It is not on the branch.
 
-A clean worktree of `2c7d1de`, with no sibling catalog (those tests skip) and no untracked manifest, passed every step: ruff, format, mypy, schemas, viewer types, yamllint, and `709 passed, 14 skipped`. Stage 1 adds 75 tests (`tests/api/`, plus additions to `tests/llm/test_registry_loader.py` and `tests/simulation/data/test_load_test_case_records.py`).
+A clean worktree of the branch, with no sibling catalog (those tests skip) and no untracked files, passed every step of the gate: ruff, format, mypy, schemas, viewer types, yamllint and pytest. Stage 1 adds 75 tests (`tests/api/`, plus additions to `tests/llm/test_registry_loader.py` and `tests/simulation/data/test_load_test_case_records.py`). They build their own temporary data repository on the synthetic fixture catalog and read no committed records.
 
 ## For the next stage
 

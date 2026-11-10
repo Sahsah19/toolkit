@@ -559,7 +559,7 @@ def preflight(
     for a problem in the inputs; each becomes an error or a warning in the report.
 
     ``manifest_path`` is a path, a path under the data repository, or a manifest id
-    (``l3_student_homework_smoke``). ``dotenv`` loads ``.env`` as the CLI does.
+    (``l3_local``). ``dotenv`` loads ``.env`` as the CLI does.
     ``transcript`` sets the tokens per synthetic message used to size prompts.
     """
     issues = _Issues()
