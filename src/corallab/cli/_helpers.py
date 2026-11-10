@@ -9,14 +9,14 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import typer
-import yaml
 from rich.console import Console
 from rich.logging import RichHandler
 
 from corallab import paths
+from corallab.api._manifests import read_run_manifest
 from corallab.paths import resolve_run_dir
 from corallab.paths import results_dir as data_results_dir
 from corallab.schemas.eval.run_manifest import RunManifest
@@ -137,21 +137,6 @@ def transcript_run_dir(transcripts: str | Path) -> Path | None:
     if _BATCH_DIR.fullmatch(path.parent.name):
         return path.parent.parent
     return path.parent
-
-
-def read_run_manifest(path: str | Path) -> dict[str, Any]:
-    """Read a run manifest YAML file into a mapping.
-
-    Comments, including the ``yaml-language-server`` schema directive, are ignored.
-    """
-    source = Path(path)
-    try:
-        loaded = yaml.safe_load(source.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        raise ValueError(f"{source} is not valid YAML: {exc}") from exc
-    if not isinstance(loaded, dict):
-        raise ValueError(f"{source} is not a run manifest mapping")
-    return loaded
 
 
 def resolve_run_manifest(run_manifest_path: str) -> RunManifest:

@@ -150,3 +150,39 @@ def test_check_test_case_records_flags_a_pathway_id_that_names_a_behavior(librar
     assert "not a pathway" in problem
     with pytest.raises(KeyError, match="not a pathway"):
         expected_behaviors(library, case.test_case)
+
+
+def test_each_problem_carries_its_kind(tmp_path: Path, library) -> None:
+    stale = KlPin(version="0.0.1", digest="sha256:0000")
+    cases = [
+        make_test_case("aimhef-0000f001", pin=stale),
+        make_test_case("aimhef-0000f002"),
+        make_test_case("aimhef-0000f003", evaluation_level=1),
+        make_test_case("aimhef-0000f003"),
+    ]
+    records_path, personas = write_test_case_records(tmp_path, cases, [])
+    records_path.write_text(
+        records_path.read_text() + '{"test_case_id": "bad"}\n', encoding="utf-8"
+    )
+    with pytest.raises(TestCaseRecordsError) as err:
+        load_test_case_records(records_path, personas, library, evaluation_level=3)
+    details = err.value.details
+    assert [(d.kind, d.test_case_id, d.line) for d in details] == [
+        ("pin", "aimhef-0000f001", 1),
+        ("persona", "aimhef-0000f002", 2),
+        ("level", "aimhef-0000f003", 3),
+        ("repeat", "aimhef-0000f003", 4),
+        ("invalid", None, 5),
+    ]
+    assert [d.message for d in details] == err.value.problems
+
+
+def test_an_error_built_from_strings_gets_invalid_details() -> None:
+    err = TestCaseRecordsError(Path("x.jsonl"), ["something"])
+    assert [(d.kind, d.message) for d in err.details] == [("invalid", "something")]
+
+
+def test_load_persona_reports_a_missing_file(tmp_path: Path) -> None:
+    from corallab.simulation.data.test_case_records import load_persona
+
+    assert "not found" in str(load_persona(tmp_path, "p-ghost@1"))

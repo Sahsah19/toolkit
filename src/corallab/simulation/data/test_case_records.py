@@ -7,7 +7,9 @@ library-pin mismatch is collected and raised together in one ``TestCaseRecordsEr
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from coralmap import KnowledgeLibrary
 from coralmap.models import Pathway, observations
@@ -22,14 +24,33 @@ from corallab.schemas.eval.test_case_record import TestCaseRecord
 logger = logging.getLogger(__name__)
 
 
+ProblemKind = Literal["invalid", "repeat", "pin", "level", "persona"]
+
+
+@dataclass(frozen=True)
+class RecordProblem:
+    """One problem ``load_test_case_records`` found, with what kind it is.
+
+    ``message`` is the same text as the matching entry of ``TestCaseRecordsError.problems``.
+    """
+
+    kind: ProblemKind
+    message: str
+    test_case_id: str | None = None
+    line: int | None = None
+
+
 class TestCaseRecordsError(ValueError):
     """A test case records file that cannot run, with every problem found."""
 
     __test__ = False
 
-    def __init__(self, path: Path, problems: list[str]) -> None:
+    def __init__(
+        self, path: Path, problems: list[str], details: list[RecordProblem] | None = None
+    ) -> None:
         self.path = path
         self.problems = problems
+        self.details = details or [RecordProblem("invalid", p) for p in problems]
         listed = "\n  ".join(problems)
         super().__init__(f"{path}: {len(problems)} problem(s)\n  {listed}")
 
@@ -42,7 +63,7 @@ def _errors(exc: ValidationError) -> str:
     return "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors())
 
 
-def _load_persona(personas_dir: Path, ref: str) -> PersonaRecord | str:
+def load_persona(personas_dir: Path, ref: str) -> PersonaRecord | str:
     """The persona ``ref`` names, or a problem describing why it cannot be read."""
     persona_id, _, _ = ref.partition("@")
     path = personas_dir / f"{persona_id}.json"
@@ -78,7 +99,7 @@ def load_test_case_records(
         raise FileNotFoundError(f"Test case records not found: {records_file}")
 
     pin = KlPin.from_library(library)
-    problems: list[str] = []
+    details: list[RecordProblem] = []
     cases: list[RunCase] = []
     seen: set[str] = set()
     personas: dict[str, PersonaRecord] = {}
@@ -88,35 +109,40 @@ def load_test_case_records(
         try:
             record = TestCaseRecord.model_validate_json(line)
         except ValidationError as exc:
-            problems.append(f"line {number}: {_errors(exc)}")
+            details.append(RecordProblem("invalid", f"line {number}: {_errors(exc)}", None, number))
             continue
-        if record.test_case_id in seen:
-            problems.append(f"line {number}: test case {record.test_case_id} repeats")
+        tc_id = record.test_case_id
+        if tc_id in seen:
+            details.append(
+                RecordProblem("repeat", f"line {number}: test case {tc_id} repeats", tc_id, number)
+            )
             continue
-        seen.add(record.test_case_id)
+        seen.add(tc_id)
         if (record.kl.version, record.kl.digest) != (pin.version, pin.digest):
-            problems.append(
-                f"{record.test_case_id}: pins library {record.kl.version} {record.kl.digest}; "
+            message = (
+                f"{tc_id}: pins library {record.kl.version} {record.kl.digest}; "
                 f"the loaded library is {pin.version} {pin.digest}"
             )
+            details.append(RecordProblem("pin", message, tc_id, number))
             continue
         if evaluation_level is not None and record.evaluation_level != evaluation_level:
-            problems.append(
-                f"{record.test_case_id}: is level {record.evaluation_level}; "
+            message = (
+                f"{tc_id}: is level {record.evaluation_level}; "
                 f"the manifest's level is {evaluation_level}"
             )
+            details.append(RecordProblem("level", message, tc_id, number))
             continue
         persona = personas.get(record.persona_ref)
         if persona is None:
-            loaded = _load_persona(personas_root, record.persona_ref)
+            loaded = load_persona(personas_root, record.persona_ref)
             if isinstance(loaded, str):
-                problems.append(f"{record.test_case_id}: {loaded}")
+                details.append(RecordProblem("persona", f"{tc_id}: {loaded}", tc_id, number))
                 continue
             persona = personas[record.persona_ref] = loaded
         cases.append(RunCase(test_case=record, persona=persona))
 
-    if problems:
-        raise TestCaseRecordsError(records_file, problems)
+    if details:
+        raise TestCaseRecordsError(records_file, [d.message for d in details], details)
     logger.info("Loaded %d test case(s) from %s", len(cases), records_file)
     return cases
 

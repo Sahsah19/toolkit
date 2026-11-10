@@ -89,8 +89,12 @@ def _resolve_endpoint(raw: dict[str, Any]) -> EndpointConfig:
     return EndpointConfig.model_validate(resolved)
 
 
-def load_registry(path: Path) -> LLMRegistry:
+def load_registry(path: Path, *, interpolate: bool = True) -> LLMRegistry:
     """Load and validate an endpoints.yaml file.
+
+    With ``interpolate=False`` each ``api_base`` keeps its ``${VAR}`` tokens, so
+    nothing is read from the environment: use it to inspect the registry's
+    shape and the env-var names it needs.
 
     Raises ``FileNotFoundError`` when the file does not exist.
     """
@@ -109,7 +113,10 @@ def load_registry(path: Path) -> LLMRegistry:
     if extra:
         raise ValueError(f"endpoints.yaml at {path} has unknown top-level keys: {sorted(extra)}")
 
-    endpoints = {name: _resolve_endpoint(cfg) for name, cfg in raw_endpoints.items()}
+    endpoints = {
+        name: _resolve_endpoint(cfg) if interpolate else EndpointConfig.model_validate(cfg)
+        for name, cfg in raw_endpoints.items()
+    }
     registry = LLMRegistry.model_validate({"endpoints": endpoints, "models": raw_models})
 
     unknown_endpoint_refs = [
@@ -131,3 +138,18 @@ def resolve_api_key(endpoint: EndpointConfig) -> str | None:
     if endpoint.api_key_env is None:
         return None
     return os.environ.get(endpoint.api_key_env)
+
+
+def endpoint_env_vars(endpoint: EndpointConfig) -> list[str]:
+    """Env-var names an endpoint needs: ``api_key_env`` and ``${VAR}`` tokens in ``api_base``.
+
+    Read from an endpoint loaded with ``interpolate=False``; an interpolated
+    ``api_base`` no longer holds its tokens.
+    """
+    names: list[str] = []
+    if endpoint.api_key_env:
+        names.append(endpoint.api_key_env)
+    for var in _ENV_PATTERN.findall(endpoint.api_base or ""):
+        if var not in names:
+            names.append(var)
+    return names

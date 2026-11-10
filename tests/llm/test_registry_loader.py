@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from corallab.llm.registry_loader import load_registry, resolve_api_key
+from corallab.llm.registry_loader import endpoint_env_vars, load_registry, resolve_api_key
 
 
 def _write(tmp_path: Path, body: str) -> Path:
@@ -176,3 +176,54 @@ def test_committed_registry_includes_ollama_local() -> None:
     route = registry.models["local/llama3.2"]
     assert route.endpoint == "ollama-local"
     assert route.litellm_model == "ollama_chat/llama3.2"
+
+
+def test_uninterpolated_load_keeps_tokens(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("SOME_BASE", "https://resolved.example")
+    path = _write(
+        tmp_path,
+        """
+endpoints:
+  e:
+    provider: openai
+    api_base: ${SOME_BASE}/v1
+    api_key_env: SOME_KEY
+models:
+  m:
+    endpoint: e
+    litellm_model: openai/m
+""",
+    )
+    raw = load_registry(path, interpolate=False)
+    assert raw.endpoints["e"].api_base == "${SOME_BASE}/v1"
+    assert endpoint_env_vars(raw.endpoints["e"]) == ["SOME_KEY", "SOME_BASE"]
+    resolved = load_registry(path)
+    assert resolved.endpoints["e"].api_base == "https://resolved.example/v1"
+    assert endpoint_env_vars(resolved.endpoints["e"]) == ["SOME_KEY"]
+
+
+def test_uninterpolated_load_does_not_fail_on_a_missing_var(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("UNSET_HOST", raising=False)
+    path = _write(
+        tmp_path,
+        """
+endpoints:
+  e:
+    provider: openai
+    api_base: https://${UNSET_HOST}/api
+models: {}
+""",
+    )
+    with pytest.raises(KeyError):
+        load_registry(path)
+    assert load_registry(path, interpolate=False).endpoints["e"].api_base == (
+        "https://${UNSET_HOST}/api"
+    )
+
+
+def test_endpoint_env_vars_without_any() -> None:
+    from corallab.llm.registry_schema import EndpointConfig
+
+    assert endpoint_env_vars(EndpointConfig(provider="ollama", api_base="http://x")) == []

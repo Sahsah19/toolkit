@@ -18,7 +18,7 @@ active router. A model id that is not registered raises
 
 from __future__ import annotations
 
-from corallab.llm.registry_loader import load_registry
+from corallab.llm.registry_loader import endpoint_env_vars, load_registry
 from corallab.llm.registry_schema import EndpointConfig, LLMRegistry, ModelRoute
 from corallab.llm.router import (
     ModelRouter,
@@ -35,6 +35,7 @@ __all__ = [
     "ModelRouter",
     "ResolvedModel",
     "UnknownModelError",
+    "endpoint_env_vars",
     "get_router",
     "load_registry",
     "set_router",
