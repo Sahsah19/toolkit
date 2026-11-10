@@ -23,3 +23,5 @@
 
 !.gitignore
 !sim-call-stack.md
+!agent-interface/
+!agent-interface/*.md
