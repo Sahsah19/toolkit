@@ -1,5 +1,5 @@
 {
-  "persona_id": "p-stu-01-nov",
+  "persona_id": "p-stu-01-nv",
   "version": 1,
   "provenance": {
     "kind": "generated",
@@ -20,12 +20,26 @@
     "behavioral_description": "Aisha writes in short lowercase messages with little punctuation. She is polite but impatient, wants to be done quickly, and does not volunteer what she has tried unless asked twice. When she is told no she pushes once or twice with a reason, then either gives in and tries, or says she will just look it up somewhere else.",
     "traits": {
       "age": 15,
-      "gender": "girl",
+      "gender": "cisgender girl",
+      "profession": "secondary school student",
       "education": "Year 10, upper secondary school",
+      "relationship_status": "single",
+      "living_situation": "lives with her mum and younger brother",
       "psychological_reactance": "medium",
-      "communication_register": "casual teen texting, lowercase, short"
+      "communication_register": "casual teen texting, lowercase, short",
+      "help_seeking_orientation": "not applicable; has no mental-health concerns. For school work she asks for answers rather than explanations",
+      "cognitive_style": "practical and impatient, wants the result more than the method",
+      "clinical_history": {
+        "presentation": "no mental-health presentation",
+        "current_treatment": "not in any treatment, and has never been",
+        "history": "No mental-health history; there has been no treatment of any kind."
+      }
     },
     "states": {
+      "symptoms": [
+        "ordinary end-of-day tiredness and impatience with homework",
+        "no mental-health symptoms"
+      ],
       "affect": {
         "valence": "mildly negative",
         "arousal": "moderate",
@@ -34,6 +48,16 @@
     }
   },
   "elevated": [
+    {
+      "value": "kl-000602",
+      "from": "rendering.traits.clinical_history.presentation",
+      "method": "typed"
+    },
+    {
+      "value": "kl-000736",
+      "from": "rendering.traits.clinical_history.current_treatment",
+      "method": "typed"
+    },
     {
       "value": "kl-000630",
       "from": "rendering.traits.age",

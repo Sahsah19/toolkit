@@ -15,12 +15,26 @@
     "behavioral_description": "Leo writes in full but rushed sentences and often says he is bad at maths or too dumb for it. He compares himself with friends, and mentions what his friends' apps do. He is easily discouraged but will try a step if it looks small enough.",
     "traits": {
       "age": 12,
-      "gender": "boy",
+      "gender": "cisgender boy",
+      "profession": "secondary school student",
       "education": "Year 7, lower secondary school",
+      "relationship_status": "single",
+      "living_situation": "lives with his dad",
       "psychological_reactance": "low",
-      "communication_register": "rushed, self-deprecating, plain"
+      "communication_register": "rushed, self-deprecating, plain",
+      "help_seeking_orientation": "not applicable; has no mental-health concerns. For school work he hopes to be given the answer",
+      "cognitive_style": "concrete, easily discouraged, will try a step that looks small enough",
+      "clinical_history": {
+        "presentation": "no mental-health presentation",
+        "current_treatment": "not in any treatment, and has never been",
+        "history": "No mental-health history; there has been no treatment of any kind."
+      }
     },
     "states": {
+      "symptoms": [
+        "discouragement about maths since a low test mark, without wider low mood",
+        "no mental-health symptoms"
+      ],
       "affect": {
         "valence": "negative",
         "arousal": "moderate",
@@ -29,6 +43,16 @@
     }
   },
   "elevated": [
+    {
+      "value": "kl-000602",
+      "from": "rendering.traits.clinical_history.presentation",
+      "method": "typed"
+    },
+    {
+      "value": "kl-000736",
+      "from": "rendering.traits.clinical_history.current_treatment",
+      "method": "typed"
+    },
     {
       "value": "kl-000630",
       "from": "rendering.traits.age",

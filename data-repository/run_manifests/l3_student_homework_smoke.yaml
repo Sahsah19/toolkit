@@ -1,7 +1,4 @@
 # yaml-language-server: $schema=./schema/run_manifest.schema.json
-# Free-tier smoke run: Gemini for the system under test, fidelity and judge;
-# a local Ollama model plays the student. Needs CORALMIND_KL_PATH pointing at
-# the student-homework knowledge-library checkout (the test cases pin its digest).
 run_id: l3-student-homework-smoke
 evaluation_level: 3
 system_under_test:
