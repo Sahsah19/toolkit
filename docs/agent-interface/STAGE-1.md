@@ -68,8 +68,8 @@ Call estimates, before retries, multiplied by the number of `system_under_test` 
 Upstream test cases pin the catalog bundled with `coralmap` (`0.1.0 sha256:4564ba13128cc240`), so every pin matched without `CORALMIND_KL_PATH`.
 
 - `l3_launch_entrenchment_smoke`: one error, `AZURE_API_KEY is not set; needed by azure/gpt-5.4-mini (system_under_test, person_response, elicitation_fidelity, judge)`. At most 173 calls, all on that model (Stage 1: 36 groups; Stage 2: up to 117).
-- `l3_local`: `ok`, at most 161 calls on `local/llama3.2`. Four Ollama warnings against an assumed 2,048 context: person prompt about 2,540 tokens, fidelity about 4,010, judge Stage 1 about 13,460, Stage 2 about 6,050. The Stage 1 figure is consistent with judge prompts cut at about 2,050 tokens in practice.
-- `l1_local`: `ok`, at most 154 calls. Judge Stage 1 about 12,160 tokens, Stage 2 about 4,750; both over 2,048.
+- `l3_local`: `ok`, at most 161 calls on `local/llama3.2`. Against the assumed 4,096 context, judge Stage 1 (about 13,460 tokens) and Stage 2 (about 6,050) overflow; the person prompt (about 2,540) and fidelity prompt (about 4,010) fit, the latter narrowly.
+- `l1_local`: `ok`, at most 154 calls. Judge Stage 1 about 12,160 tokens and Stage 2 about 4,750; both over 4,096.
 
 ## Decisions
 
@@ -78,15 +78,28 @@ Upstream test cases pin the catalog bundled with `coralmap` (`0.1.0 sha256:4564b
 - **`.env` is loaded like the CLI** (`load_dotenv()`, existing variables win) when `dotenv=True`. The API never reads or returns its contents. Tests replace `load_env_file` with a no-op.
 - **Loader authority.** Test case checks come from `load_test_case_records` and `check_test_case_records`. Because the loader stops at the first problem per test case, preflight also loads the personas of test cases whose pin or level failed, so a pin mismatch does not hide a missing persona.
 - **Prompt sizes use the real builders** (`PersonResponseGenerator._build_system_prompt`/`_build_messages`, `fidelity.elicitation._build_prompt`, `build_stage1_prompt`, `build_stage2_prompt`) over a synthetic transcript of `max_turns` exchanges, counted with `litellm.token_counter` as `--dry-run` does. Defaults are about 60 tokens per user message and 350 per AI reply (`TranscriptAssumption`). Two of those builders are private; if they are renamed, `_prompts.py` breaks loudly in the tests.
-- **Ollama context.** In order: `num_ctx` in the role's `extra_params`, `num_ctx` in the Modelfile (`/api/show`), the loaded context (`/api/ps`), then an assumed 2,048 (the observed cut). The server's own default (`OLLAMA_CONTEXT_LENGTH`) is not visible to a client. The suggested `num_ctx` is a power of two with 25% headroom, capped at the trained maximum.
+- **Ollama context.** In order: `num_ctx` in the role's `extra_params`, `num_ctx` in the Modelfile (`/api/show`), the loaded context (`/api/ps`), then an assumed 4,096 (measured; see below). The server's own default (`OLLAMA_CONTEXT_LENGTH`) is not visible to a client. The suggested `num_ctx` is a power of two with 25% headroom, capped at the trained maximum.
 - Only Ollama models get prompt sizing. Hosted models have large contexts and are not compared.
 
 ## Not verified
 
-- That `extra_params: {num_ctx: N}` reaches Ollama through `LLMClient` → LiteLLM `ollama_chat`. LiteLLM's `OllamaChatConfig` lists `num_ctx`, and `complete()` forwards extra params with `drop_params=True`, but no call was made.
-- The effective default context of the local Ollama 0.40.16 server. 2,048 is an assumption from the observed cut.
+- The default on other Ollama versions or servers with `OLLAMA_CONTEXT_LENGTH` set; preflight cannot see a server's default until a model is loaded.
 - Token counts are approximate: LiteLLM falls back to a generic tokenizer for `ollama_chat/*` and `gemini/*`.
-- No model was called, so no estimate was compared against a real run's trace.
+- No estimate was compared against a real run's trace.
+
+## Ollama context, measured (2026-11-10)
+
+Local Ollama 0.40.16, `llama3.2`, one prompt with a code word at its start, temperature 0. Calls made directly and through `LLMClient.complete` with the registry's `local/llama3.2`:
+
+| Prompt | `num_ctx` | Tokens Ollama read | Loaded context | Code word recalled |
+| --- | --- | --- | --- | --- |
+| 3,891 tokens | unset | 3,891 | 4,096 | yes |
+| 6,771 tokens | unset | 2,050 | 4,096 | no |
+| 6,771 tokens | 8,192 (via `extra_params`) | 6,771 | 8,192 | yes |
+
+- The default context is 4,096. A prompt that overflows it is not cut to 4,096 but to about half (2,050 tokens), keeping the end. That is the "cut at about 2,050 tokens" seen in judge runs.
+- `extra_params: {num_ctx: N}` on a `ModelCallConfig` reaches Ollama through `LLMClient` → router → LiteLLM `ollama_chat`, and fixes the cut. Verified.
+- The student homework run's ~2,980-token person prompt fits in 4,096, so truncation does not explain that run's off-script student.
 
 ## `pixi run check`
 

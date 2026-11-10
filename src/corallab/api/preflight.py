@@ -51,8 +51,9 @@ from corallab.schemas.eval.run_manifest import ModelCallConfig, RunManifest
 logger = logging.getLogger(__name__)
 
 #: Context assumed for an Ollama model whose num_ctx is set nowhere preflight can see.
-#: Judge Stage 1 prompts were cut at about 2,050 tokens on a default server.
-ASSUMED_OLLAMA_CONTEXT = 2048
+#: Measured on Ollama 0.40.16: with no num_ctx a model loads at 4,096, a 3,891-token
+#: prompt is read whole, and a 6,771-token prompt is cut to its last 2,050 tokens.
+ASSUMED_OLLAMA_CONTEXT = 4096
 
 _LOADER_KIND_TO_CHECK = {"pin": "catalog_pin", "persona": "personas"}
 
@@ -515,9 +516,9 @@ def _check_ollama(
                     issues.warn(
                         "ollama",
                         f"{size.role} prompts reach ~{size.tokens:,} tokens but {model_id} gets "
-                        f"a context of {context:,} ({source}); Ollama drops the start of a "
-                        f"prompt that does not fit. Set extra_params: {{num_ctx: {suggestion}}} "
-                        "on this model in the manifest",
+                        f"a context of {context:,} ({source}); Ollama cuts a prompt that does "
+                        "not fit to its last half-context of tokens, dropping the start. Set "
+                        f"extra_params: {{num_ctx: {suggestion}}} on this model in the manifest",
                         model_id,
                     )
                 if info.max_context_length and size.tokens > info.max_context_length:
