@@ -78,7 +78,7 @@ Upstream test cases pin the catalog bundled with `coralmap` (`0.1.0 sha256:4564b
 - **`.env` is loaded like the CLI** (`load_dotenv()`, existing variables win) when `dotenv=True`. The API never reads or returns its contents. Tests replace `load_env_file` with a no-op.
 - **Loader authority.** Test case checks come from `load_test_case_records` and `check_test_case_records`. Because the loader stops at the first problem per test case, preflight also loads the personas of test cases whose pin or level failed, so a pin mismatch does not hide a missing persona.
 - **Prompt sizes use the real builders** (`PersonResponseGenerator._build_system_prompt`/`_build_messages`, `fidelity.elicitation._build_prompt`, `build_stage1_prompt`, `build_stage2_prompt`) over a synthetic transcript of `max_turns` exchanges, counted with `litellm.token_counter` as `--dry-run` does. Defaults are about 60 tokens per user message and 350 per AI reply (`TranscriptAssumption`). Two of those builders are private; if they are renamed, `_prompts.py` breaks loudly in the tests.
-- **Ollama context.** In order: `num_ctx` in the role's `extra_params`, `num_ctx` in the Modelfile (`/api/show`), the loaded context (`/api/ps`), then an assumed 4,096 (measured; see below). The server's own default (`OLLAMA_CONTEXT_LENGTH`) is not visible to a client. The suggested `num_ctx` is a power of two with 25% headroom, capped at the trained maximum.
+- **Ollama context.** In order: `num_ctx` in the role's `extra_params`, `num_ctx` in the Modelfile (`/api/show`), then an assumed 4,096 (measured; see below). The loaded context (`/api/ps`) is reported but not used: a call without `num_ctx` reloads the model at the server default, whatever context it was loaded with. The server's own default (`OLLAMA_CONTEXT_LENGTH`) is not visible to a client. The suggested `num_ctx` is a power of two with 25% headroom, capped at the trained maximum.
 - Only Ollama models get prompt sizing. Hosted models have large contexts and are not compared.
 
 ## Not verified
@@ -98,6 +98,7 @@ Local Ollama 0.40.16, `llama3.2`, one prompt with a code word at its start, temp
 | 6,771 tokens | 8,192 (via `extra_params`) | 6,771 | 8,192 | yes |
 
 - The default context is 4,096. A prompt that overflows it is not cut to 4,096 but to about half (2,050 tokens), keeping the end. That is the "cut at about 2,050 tokens" seen in judge runs.
+- With the model loaded at 8,192, a call with no `num_ctx` reloaded it at 4,096 and read 2,050 tokens. The context a model is loaded with does not carry over.
 - `extra_params: {num_ctx: N}` on a `ModelCallConfig` reaches Ollama through `LLMClient` → router → LiteLLM `ollama_chat`, and fixes the cut. Verified.
 - The student homework run's ~2,980-token person prompt fits in 4,096, so truncation does not explain that run's off-script student.
 

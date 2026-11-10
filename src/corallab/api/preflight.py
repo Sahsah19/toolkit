@@ -406,8 +406,8 @@ def _effective_context(cfg: ModelCallConfig, info: OllamaModelInfo) -> tuple[int
         return num_ctx, "extra_params"
     if info.modelfile_num_ctx:
         return info.modelfile_num_ctx, "modelfile"
-    if info.loaded_context_length:
-        return info.loaded_context_length, "loaded"
+    # Not the loaded context: a call without num_ctx reloads the model at the
+    # server default, whatever context an earlier call loaded it with.
     return ASSUMED_OLLAMA_CONTEXT, "assumed"
 
 

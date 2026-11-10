@@ -368,3 +368,17 @@ def test_suggested_num_ctx() -> None:
 def test_a_manifest_by_path(data_repo: DataRepo, keys_set: None) -> None:
     path = data_repo.root / "run_manifests" / "smoke.yaml"
     assert preflight(str(path), query_ollama=False).manifest_path == str(path)
+
+
+def test_the_loaded_context_is_not_the_context_a_call_gets(
+    data_repo: DataRepo, keys_set: None
+) -> None:
+    def fetch(url: str, body: Any, timeout: float) -> dict[str, Any]:
+        if "show" in url:
+            return {"parameters": "", "model_info": {}}
+        return {"models": [{"name": "llama3.2:latest", "context_length": 65536}]}
+
+    report = preflight("smoke", fetch=fetch)
+    assert report.ollama[0].loaded_context_length == 65536
+    assert {p.context_source for p in report.ollama[0].prompts} == {"assumed"}
+    assert {p.context_length for p in report.ollama[0].prompts} == {ASSUMED_OLLAMA_CONTEXT}

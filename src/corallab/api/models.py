@@ -172,8 +172,8 @@ class PromptEstimate(_Model):
     )
     context_source: str = Field(
         description=(
-            "extra_params (num_ctx in the manifest), modelfile, loaded (/api/ps), "
-            "or assumed (server default unknown)"
+            "extra_params (num_ctx in the manifest), modelfile, "
+            "or assumed (the server default, 4,096 on Ollama 0.40.16)"
         )
     )
     fits: bool | None = Field(description="tokens <= context_length; None when not comparable")
@@ -192,7 +192,11 @@ class OllamaContext(_Model):
         default=None, description="num_ctx set in the model's Modelfile parameters"
     )
     loaded_context_length: int | None = Field(
-        default=None, description="Context of the model if it is loaded now (/api/ps)"
+        default=None,
+        description=(
+            "Context of the model if it is loaded now (/api/ps). For information only: "
+            "a call without num_ctx reloads it at the server default"
+        ),
     )
     max_context_length: int | None = Field(
         default=None, description="The model's trained maximum, from /api/show model_info"
