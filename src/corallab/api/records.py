@@ -313,9 +313,10 @@ def create_persona(
     Validated as ``PersonaRecord``; each elevated value must be a context value on a person
     dimension, with at most one per ``cardinality: one`` dimension. For a counterfactual,
     ``variant_of`` is the base's pinned reference (``p-ocd-07@1``), which must resolve; the
-    rendering paths that differ from it are worked out and used as ``changed_paths`` unless
-    given (a mismatch with the given ones is a note). A rendering given as a mapping keeps its
-    key order in the file. Refuses to replace an existing file unless ``overwrite``.
+    rendering paths that differ from it, including fields the variant removes (TEST_CASE_RULES
+    P7), are worked out and used as ``changed_paths`` unless given (a mismatch with the given
+    ones is a note). A rendering given as a mapping keeps its key order in the file. Refuses
+    to replace an existing file unless ``overwrite``.
     """
     root = data_target(directory)
     target = root / f"{persona_id}.json"

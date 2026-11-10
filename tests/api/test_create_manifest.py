@@ -9,6 +9,7 @@ from corallab.api.manifests import (
     SCHEMA_LINE,
     apply_overrides,
     create_manifest,
+    dropped_settings,
     dump_manifest,
 )
 from corallab.api.models import ManifestOverrides, WriteAction
@@ -196,3 +197,41 @@ def test_preflight_errors_are_reported_not_raised(data_repo: DataRepo) -> None:
     assert result.preflight is not None
     assert not result.preflight.ok
     assert any(i.check == "models" for i in result.preflight.errors)
+
+
+def test_bare_model_ids_note_the_settings_they_drop(data_repo: DataRepo) -> None:
+    template = manifest_data()
+    template["system_under_test"][0]["extra_params"] = {"num_ctx": 8192}
+    template["simulation"]["person_response_model"]["temperature"] = 0.9
+    data_repo.write_manifest("smoke", template)
+    result = create_manifest(
+        "smoke",
+        ManifestOverrides(
+            run_id="b",
+            run_dir="results/b",
+            system_under_test=["remote/model"],
+            person_response_model="local/model",
+            judge_model="remote/model",
+        ),
+        "b",
+        query_ollama=False,
+    )
+    assert result.written, result.problems
+    assert result.notes == [
+        "system_under_test[0]: given as the bare id 'remote/model', so the template's "
+        "temperature, extra_params were dropped and the role default applies",
+        "simulation.person_response_model: given as the bare id 'local/model', so the "
+        "template's temperature were dropped and the role default applies",
+    ]
+    assert result.manifest is not None
+    assert result.manifest.primary_sut.extra_params == {}
+
+
+def test_no_note_when_nothing_is_dropped() -> None:
+    # A full config keeps what it says; a bare id with no template entry, or for a template
+    # role that set only model_id (the judge here), drops nothing.
+    overrides = ManifestOverrides(
+        system_under_test=[ModelCallConfig(model_id="a/b", temperature=1.0), "c/d"],
+        judge_model="j/m",
+    )
+    assert dropped_settings(manifest_data(), overrides) == []

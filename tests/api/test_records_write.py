@@ -326,3 +326,38 @@ def test_changed_paths_need_variant_of(data_repo: DataRepo) -> None:
     )
     assert not result.written
     assert "without variant_of" in result.problems[0]
+
+
+def test_variant_counts_removed_fields_as_changed(data_repo: DataRepo) -> None:
+    base = _persona_parts()
+    base["rendering"]["traits"]["clinical_history"] = {
+        "current_treatment": "weekly therapy",
+        "treatment_engagement": "keeps every appointment",
+        "insight": "good",
+    }
+    assert create_persona("p-fix-03", **base).written
+    variant = _persona_parts()
+    variant["rendering"]["traits"]["clinical_history"] = {
+        "current_treatment": "none currently",
+        "insight": "good",
+    }
+    result = create_persona("p-fix-03-nt", **variant, variant_of="p-fix-03@1")
+    assert result.written, result.problems
+    assert result.changed_paths == [
+        "rendering.traits.clinical_history.current_treatment",
+        "rendering.traits.clinical_history.treatment_engagement",
+    ]
+    # Given paths that leave out the removed field are kept as given, with a note.
+    given = create_persona(
+        "p-fix-03-nt",
+        **variant,
+        variant_of="p-fix-03@1",
+        changed_paths=["rendering.traits.clinical_history.current_treatment"],
+        overwrite=True,
+    )
+    assert given.persona is not None
+    assert given.persona.variant_of is not None
+    assert given.persona.variant_of.changed_paths == [
+        "rendering.traits.clinical_history.current_treatment"
+    ]
+    assert "treatment_engagement" in given.notes[0]

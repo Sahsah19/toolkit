@@ -128,6 +128,41 @@ def apply_overrides(template: dict[str, Any], overrides: ManifestOverrides) -> d
     return data
 
 
+def dropped_settings(template: dict[str, Any], overrides: ManifestOverrides) -> list[str]:
+    """One note per role whose model is given as a bare id while the template set more than
+    ``model_id`` for it: those settings are dropped and the role default applies."""
+    sim = template.get("simulation") or {}
+    fidelity = sim.get("elicitation_fidelity") or {}
+    sut = template.get("system_under_test") or []
+    roles: list[tuple[str, ModelChoice | None, Any]] = [
+        (f"system_under_test[{i}]", choice, sut[i] if i < len(sut) else None)
+        for i, choice in enumerate(overrides.system_under_test or [])
+    ]
+    roles += [
+        (
+            "simulation.person_response_model",
+            overrides.person_response_model,
+            sim.get("person_response_model"),
+        ),
+        ("simulation.elicitation_fidelity.model", overrides.fidelity_model, fidelity.get("model")),
+    ]
+    roles += [
+        (f"judges[{i}].model", overrides.judge_model, judge.get("model"))
+        for i, judge in enumerate(template.get("judges") or [])
+    ]
+    notes = []
+    for role, choice, old in roles:
+        if not isinstance(choice, str) or not isinstance(old, dict):
+            continue
+        dropped = [key for key in old if key != "model_id"]
+        if dropped:
+            notes.append(
+                f"{role}: given as the bare id {choice!r}, so the template's "
+                f"{', '.join(dropped)} were dropped and the role default applies"
+            )
+    return notes
+
+
 def create_manifest(
     from_template: str | Path,
     overrides: ManifestOverrides | None = None,
@@ -141,9 +176,11 @@ def create_manifest(
     ``run_manifests/<out_name>.yaml``, then preflight it.
 
     ``from_template`` is a path or a manifest id (``l3_local``). Keys the template leaves out
-    stay out, so defaults are not written. Refuses to replace an existing file unless
-    ``overwrite``. Comments in the template other than the schema line are not kept. Never
-    raises for a problem in the inputs; nothing is written when ``problems`` is not empty.
+    stay out, so defaults are not written. A model given as a bare id drops the template's
+    other settings for that role; ``notes`` names each one dropped. Refuses to replace an
+    existing file unless ``overwrite``. Comments in the template other than the schema line
+    are not kept. Never raises for a problem in the inputs; nothing is written when
+    ``problems`` is not empty.
     ``query_ollama`` and ``dotenv`` are passed to ``preflight``.
     """
     overrides = overrides or ManifestOverrides()
@@ -159,7 +196,8 @@ def create_manifest(
         return result.model_copy(update={"problems": [f"template not found: {from_template}"]})
     result.template_path = relative_to_data(template_path)
     try:
-        data = apply_overrides(read_run_manifest(template_path), overrides)
+        template = read_run_manifest(template_path)
+        data = apply_overrides(template, overrides)
     except ValueError as exc:
         return result.model_copy(update={"problems": [str(exc)]})
 
@@ -187,6 +225,7 @@ def create_manifest(
         for key in ("run_id", "run_dir")
         if key in data and getattr(overrides, key) is None and key not in overrides.set
     ]
+    notes += dropped_settings(template, overrides)
     before = read_text(target)
     action = WriteAction.OVERWRITTEN if target.exists() else WriteAction.CREATED
     target.parent.mkdir(parents=True, exist_ok=True)
