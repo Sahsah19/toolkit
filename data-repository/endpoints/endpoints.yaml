@@ -145,6 +145,11 @@ models:
     gemini/gemini-2.5-flash:
         endpoint: gemini-direct
         litellm_model: gemini/gemini-2.5-flash
+    # 2.5 models are closed to new Gemini API users. 3.8-flash hit a 5-request
+    # free-tier quota and 503s, so free-tier runs use 3.5-flash-lite.
+    gemini/gemini-3.5-flash-lite:
+        endpoint: gemini-direct
+        litellm_model: gemini/gemini-3.5-flash-lite
 
     # Examples for further extension (uncomment + add corresponding endpoint
     # stanzas above to use):

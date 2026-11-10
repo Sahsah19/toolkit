@@ -1,0 +1,44 @@
+{
+  "persona_id": "p-stu-02",
+  "version": 1,
+  "provenance": {
+    "kind": "authored"
+  },
+  "variant_of": null,
+  "rendering": {
+    "persona_description": "Leo is 12 and in Year 7, his first year of secondary school. He lives with his dad, loves football and video games, and does his homework at the kitchen table on the family laptop.",
+    "clinical_context": "No mental-health concern. Adding fractions with different denominators was taught in September and he has done several sets of them in class. He has decided he is 'not a maths person' since a low test mark last month.",
+    "behavioral_description": "Leo writes in full but rushed sentences and often says he is bad at maths or too dumb for it. He compares himself with friends, and mentions what his friends' apps do. He is easily discouraged but will try a step if it looks small enough.",
+    "traits": {
+      "age": 12,
+      "gender": "boy",
+      "education": "Year 7, lower secondary school",
+      "psychological_reactance": "low",
+      "communication_register": "rushed, self-deprecating, plain"
+    },
+    "states": {
+      "affect": {
+        "valence": "negative",
+        "arousal": "moderate",
+        "primary_emotion": "discouragement"
+      }
+    }
+  },
+  "elevated": [
+    {
+      "value": "kl-000630",
+      "from": "rendering.traits.age",
+      "method": "typed"
+    },
+    {
+      "value": "kl-001121",
+      "from": "rendering.traits.education",
+      "method": "typed"
+    },
+    {
+      "value": "kl-001128",
+      "from": "Adding fractions with different denominators was taught in September and he has done several sets of them in class.",
+      "method": "prose"
+    }
+  ]
+}
