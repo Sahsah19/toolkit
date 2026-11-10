@@ -2,7 +2,11 @@
   "persona_id": "p-stu-01-nov",
   "version": 1,
   "provenance": {
-    "kind": "authored"
+    "kind": "generated",
+    "generator": {
+      "model": "claude-opus-5-5",
+      "attempt": 1
+    }
   },
   "variant_of": {
     "persona": "p-stu-01@1",
