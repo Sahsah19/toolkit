@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from corallab.schemas.eval.persona_record import PersonaRecord
 from corallab.schemas.eval.run_manifest import ModelCallConfig, RunManifest
 from corallab.schemas.eval.test_case_record import TestCaseRecord
+from corallab.schemas.eval.transcript import FidelityVerdict, Transcript
+from corallab.schemas.judge.eval_result import EvalResult
 
 
 class _Model(BaseModel):
@@ -332,3 +334,415 @@ class PersonaWriteResult(WriteResult):
         description="For a variant: rendering paths that differ from the base persona",
     )
     base_diff: str = Field(default="", description="For a variant: unified diff, base → this")
+
+
+# ---------------------------------------------------------------------------
+# Runs: starting, watching, stopping and deleting
+# ---------------------------------------------------------------------------
+
+RunStage = Literal["starting", "sim", "check", "judge", "finished", "failed", "cancelled"]
+RunLocation = Literal["results", "sample", "elsewhere"]
+
+
+class CallCount(_Model):
+    """Model calls one role made on one model, counted from a run's trace files."""
+
+    role: str = Field(
+        description="system_under_test, person_response, elicitation_fidelity, judge_stage1, "
+        "judge_stage2, or the trace's own role name for any other caller"
+    )
+    model: str = Field(description="The provider model the trace names (resolved LiteLLM model)")
+    calls: int = Field(description="Successful responses; a call that raised is not traced")
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cached_tokens: int = 0
+
+
+class StartRunResult(_Model):
+    """What ``start_run`` did. Nothing is started when ``problems`` is not empty."""
+
+    started: bool
+    run_id: str | None = Field(
+        default=None, description="The results folder's name; every other run function takes it"
+    )
+    results_dir: str | None = Field(
+        default=None, description="The folder the CLI created, relative to the data repository"
+    )
+    pid: int | None = None
+    manifest_path: str = Field(description="The manifest asked for")
+    run_manifest: str | None = Field(
+        default=None,
+        description="The manifest the run was started with: the one asked for, or a copy "
+        "narrowed to test_case_ids",
+    )
+    test_case_ids: list[str] | None = None
+    command: list[str] = Field(default_factory=list, description="The command started")
+    problems: list[str] = Field(default_factory=list, description="Why nothing was started")
+    warnings: list[str] = Field(
+        default_factory=list, description="Worth a look, but did not stop the start"
+    )
+    preflight: PreflightReport | None = None
+
+
+class RunStatus(_Model):
+    """How far a run has got, read from its files and its process."""
+
+    run_id: str
+    results_dir: str | None = None
+    found: bool
+    started_by_api: bool = Field(
+        description="Started by start_run, so its process and exit code are known"
+    )
+    pid: int | None = None
+    alive: bool | None = Field(description="None when the run was not started by start_run")
+    exit_code: int | None = Field(
+        default=None, description="None while running, after a cancel, or when unknown"
+    )
+    cancelled: bool = False
+    stage: RunStage | None = Field(
+        default=None,
+        description="While alive, the stage last written to (from the newest trace file); "
+        "after exit, finished, failed or cancelled. None when neither is known",
+    )
+    batches_total: int | None = None
+    batches_simulated: int = Field(description="Batch folders holding a transcript file")
+    transcripts_total: int | None = Field(
+        default=None, description="Valid test cases in the run's inputs × system_under_test entries"
+    )
+    transcripts_done: int = Field(
+        description="Transcript lines written. A batch's file is written when the whole batch ends"
+    )
+    checks_done: int = 0
+    judged_done: int = 0
+    judge_calls_done: int = Field(default=0, description="Judge model calls traced so far")
+    calls: list[CallCount] = Field(default_factory=list, description="Every traced call so far")
+    errors: list[str] = Field(
+        default_factory=list,
+        description="ERROR lines of the run log (addresses removed), failed simulations, checks "
+        "and judge results, and the end of the process output when it failed",
+    )
+    started_at: str | None = None
+    elapsed_seconds: float | None = None
+    problems: list[str] = Field(default_factory=list)
+
+
+class CancelResult(_Model):
+    run_id: str
+    cancelled: bool
+    was_alive: bool
+    signal: str | None = Field(default=None, description="SIGTERM, or SIGKILL when it was needed")
+    problems: list[str] = Field(default_factory=list)
+
+
+class BurrApp(_Model):
+    """One application folder of the Burr tracker."""
+
+    app_id: str
+    path: str
+    reason: str = Field(description="Why it belongs to the run, or why that is not known")
+
+
+class DeleteRunResult(_Model):
+    """What ``delete_run`` removed, or would remove when ``dry_run``."""
+
+    run_id: str
+    dry_run: bool
+    deleted: bool
+    results_dir: str | None = None
+    files: list[str] = Field(default_factory=list, description="Files in the results folder")
+    bytes: int = 0
+    agent_files: list[str] = Field(
+        default_factory=list,
+        description="start_run's own files for this run: process record, output, narrowed inputs",
+    )
+    burr_apps: list[BurrApp] = Field(
+        default_factory=list, description="Tracker folders attributed to this run"
+    )
+    burr_unattributed: list[BurrApp] = Field(
+        default_factory=list,
+        description="Tracker folders whose run could not be read from their own metadata; "
+        "never deleted",
+    )
+    db_rows: dict[str, int] = Field(
+        default_factory=dict, description="Rows of the run's apps in each SQLite persister file"
+    )
+    problems: list[str] = Field(default_factory=list, description="Why nothing was deleted")
+
+
+class RunListing(_Model):
+    """One results folder."""
+
+    run_id: str
+    path: str
+    location: RunLocation
+    created_at: str | None = Field(
+        default=None, description="From the -YYYYMMDD-HHMMSS the CLI appends to the folder name"
+    )
+    manifest_run_id: str | None = None
+    evaluation_level: int | None = None
+    records_file: str | None = Field(default=None, description="The copied test case file's name")
+    system_under_test: list[str] = Field(default_factory=list)
+    batches: int = 0
+    transcripts: int = 0
+    checked: int = 0
+    judged: int = 0
+    started_by_api: bool = False
+    alive: bool | None = None
+
+
+# ---------------------------------------------------------------------------
+# Runs: reading results
+# ---------------------------------------------------------------------------
+
+
+class TokenCount(_Model):
+    prompt: int = 0
+    completion: int = 0
+    cached: int = 0
+
+
+class StrategyResult(_Model):
+    index: int
+    adherence: str = Field(description="followed, not_followed or trigger_absent")
+
+
+class ExpectedBehaviorResult(_Model):
+    """The fidelity check's verdict on one expected user behavior."""
+
+    behavior: str
+    catalog_occurred: bool
+    assertion_occurred: bool
+    miss: str | None = None
+
+
+class GateResult(_Model):
+    gate: str
+    part_id: str
+    label: str
+    verdict: str = Field(description="holds, does_not_hold or unknown")
+    basis: str = Field(description="test_case, conversation or none")
+    conflict: bool
+
+
+class PathwayResult(_Model):
+    """The judge's Stage 2 verdict on one pathway."""
+
+    pathway_id: str
+    pathway_did: str
+    label: str
+    target: bool = Field(description="The pathway the test case was written for")
+    support: str = Field(
+        description="supported, partially_supported, not_supported or insufficient_evidence"
+    )
+    gate_status: str = Field(description="met, not_met, unknown or no_gates")
+    applies: bool = Field(
+        description="A supported instance and every gate holds (met or no_gates): what the "
+        "viewer counts as the pathway firing"
+    )
+    instances: int
+    gates: list[GateResult] = Field(default_factory=list)
+
+
+class BehaviorFound(_Model):
+    """A behavior the judge's Stage 1 observed."""
+
+    behavior_id: str
+    behavior_did: str
+    label: str
+    kind: str
+    turns: list[int] = Field(default_factory=list)
+
+
+class TranscriptResult(_Model):
+    """One conversation of a test case, with its fidelity check and judge verdicts."""
+
+    transcript_id: str
+    system_under_test: str
+    sample: int
+    batch: str
+    exchanges: int
+    exit_reason: str | None = None
+    sim_failure: str | None = None
+    fidelity_status: str | None = Field(
+        default=None, description="valid, invalid or not_tested; None when not checked"
+    )
+    fidelity_source: Literal["check_file", "transcript"] | None = None
+    fidelity_error: str | None = None
+    strategies: list[StrategyResult] = Field(default_factory=list)
+    expected_behaviors: list[ExpectedBehaviorResult] = Field(default_factory=list)
+    judge_status: str | None = Field(default=None, description="None when not judged")
+    judge_model: str | None = None
+    prompt_version: str | None = None
+    kl_version: str | None = None
+    kl_digest: str | None = None
+    pathways: list[PathwayResult] = Field(default_factory=list)
+    pathways_skipped: int = 0
+    pathways_failed: list[str] = Field(default_factory=list)
+    behaviors_found: list[BehaviorFound] = Field(default_factory=list)
+    judge_calls: int | None = Field(
+        default=None, description="Stage 1 + Stage 2 calls the judge result records"
+    )
+    judge_retries: int | None = None
+    judge_call_failures: int | None = None
+    judge_tokens: TokenCount | None = None
+    calls: list[CallCount] = Field(
+        default_factory=list,
+        description="Traced calls tied to this transcript's test case. Sim calls count only "
+        "when the batch held this one transcript: their trace rows do not name a test case",
+    )
+
+
+class CaseResult(_Model):
+    test_case_id: str
+    pathway_id: str | None = Field(default=None, description="From the run's copy of the records")
+    transcripts: list[TranscriptResult]
+
+
+class CatalogUse(_Model):
+    """Which Knowledge Library the run's parts name."""
+
+    test_case_pins: list[str] = Field(
+        default_factory=list, description="'version digest' the run's test cases pin"
+    )
+    judge: list[str] = Field(
+        default_factory=list, description="'version digest' the judge results record"
+    )
+    produced_by: list[str] = Field(
+        default_factory=list,
+        description="'name version' of the library in the records' produced_by",
+    )
+    loaded: str | None = Field(
+        default=None, description="'version digest' loaded now, used for the call estimate"
+    )
+
+
+class CallComparison(_Model):
+    """Preflight's call estimate for one role against the calls the run traced."""
+
+    role: str
+    estimated: int
+    upper_bound: bool
+    actual: int
+    difference: int = Field(description="actual − estimated")
+    basis: str
+    note: str = ""
+
+
+class RunSummary(_Model):
+    run_id: str
+    path: str
+    location: RunLocation
+    manifest_run_id: str | None = None
+    evaluation_level: int | None = None
+    system_under_test: list[str] = Field(default_factory=list)
+    judge_models: list[str] = Field(default_factory=list)
+    transcripts: int = 0
+    checked: int = 0
+    judged: int = 0
+    fidelity: dict[str, int] = Field(
+        default_factory=dict, description="Transcripts per fidelity status ('unchecked' for none)"
+    )
+    test_cases: list[CaseResult] = Field(default_factory=list)
+    calls: list[CallCount] = Field(default_factory=list)
+    tokens: TokenCount = Field(default_factory=TokenCount)
+    catalog: CatalogUse = Field(default_factory=CatalogUse)
+    estimate: list[CallComparison] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    problems: list[str] = Field(
+        default_factory=list, description="Files or lines that could not be read"
+    )
+
+
+class TranscriptView(_Model):
+    batch: str
+    transcript: Transcript
+    fidelity: FidelityVerdict | None = Field(
+        default=None, description="From the check file, else the transcript's own field"
+    )
+    fidelity_source: Literal["check_file", "transcript"] | None = None
+
+
+class TranscriptsResult(_Model):
+    run_id: str
+    test_case_id: str
+    transcripts: list[TranscriptView] = Field(default_factory=list)
+    problems: list[str] = Field(default_factory=list)
+
+
+class TranscriptVerdicts(_Model):
+    transcript_id: str
+    test_case_id: str
+    system_under_test: str
+    fidelity: FidelityVerdict | None = None
+    fidelity_error: str | None = None
+    judge: EvalResult | None = Field(
+        default=None,
+        description="The judge result without its copy of the conversation; raw model "
+        "responses only with include_raw",
+    )
+
+
+class VerdictsResult(_Model):
+    run_id: str
+    verdicts: list[TranscriptVerdicts] = Field(default_factory=list)
+    problems: list[str] = Field(default_factory=list)
+
+
+class PathwayRate(_Model):
+    judged: int = Field(description="Transcripts judged successfully")
+    assessed: int = Field(description="Of those, how many had this pathway assessed in Stage 2")
+    supported: int = 0
+    partially_supported: int = 0
+    not_supported: int = 0
+    insufficient_evidence: int = 0
+    applies: int = 0
+    rate: float | None = Field(default=None, description="applies / judged")
+
+
+class PathwayComparison(_Model):
+    pathway_id: str
+    label: str
+    a: PathwayRate
+    b: PathwayRate
+    difference: float | None = Field(default=None, description="b.rate − a.rate")
+
+
+class BehaviorRate(_Model):
+    found: int
+    judged: int
+    rate: float | None = Field(default=None, description="found / judged")
+
+
+class BehaviorComparison(_Model):
+    behavior_id: str
+    label: str
+    kind: str
+    a: BehaviorRate
+    b: BehaviorRate
+    difference: float | None = Field(default=None, description="b.rate − a.rate")
+
+
+class RunHeader(_Model):
+    run_id: str
+    manifest_run_id: str | None = None
+    system_under_test: list[str] = Field(default_factory=list)
+    judge_models: list[str] = Field(default_factory=list)
+    prompt_versions: list[str] = Field(default_factory=list)
+    catalog: list[str] = Field(
+        default_factory=list, description="'version digest' the judge results record"
+    )
+    transcripts: int = 0
+    judged: int = 0
+    counted: int = Field(description="Judged transcripts the rates count")
+    fidelity: dict[str, int] = Field(default_factory=dict)
+
+
+class RunComparison(_Model):
+    a: RunHeader
+    b: RunHeader
+    pathways: list[PathwayComparison] = Field(default_factory=list)
+    behaviors: list[BehaviorComparison] = Field(default_factory=list)
+    test_cases_only_in_a: list[str] = Field(default_factory=list)
+    test_cases_only_in_b: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    problems: list[str] = Field(default_factory=list)
